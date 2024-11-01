@@ -41,10 +41,9 @@ class TextDataset(torch.utils.data.Dataset):
 train_dataset = TextDataset(train_encodings, train_labels)
 test_dataset = TextDataset(test_encodings)
 
-# Define training arguments
 training_args = TrainingArguments(
     output_dir='./results',          
-    evaluation_strategy="epoch",     
+    evaluation_strategy="no",  # Disable evaluation during training
     per_device_train_batch_size=8,   
     per_device_eval_batch_size=8,    
     num_train_epochs=3,              
