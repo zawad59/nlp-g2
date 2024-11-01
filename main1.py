@@ -4,8 +4,8 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trai
 from sklearn.metrics import accuracy_score, f1_score
 
 # Load the training and test data
-train_data = np.load('sp_train.npy', allow_pickle=True)
-test_data = np.load('sp_test.npy', allow_pickle=True)
+train_data = np.load('SP_train.npy', allow_pickle=True)
+test_data = np.load('SP_test.npy', allow_pickle=True)
 
 # Extract the 'question' and 'label' fields for training and test sets
 train_texts = [item['question'] for item in train_data]
