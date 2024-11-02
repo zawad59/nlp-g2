@@ -1,12 +1,13 @@
 import numpy as np
+import pandas as pd
 import torch
 from transformers import AutoTokenizer, pipeline
 from sklearn.metrics import accuracy_score, f1_score
-import pandas as pd
 
 # Load the training and test data
-train_data = np.load('SP_train.npy', allow_pickle=True)
-test_data = np.load('SP_test.npy', allow_pickle=True)
+train_data = np.load('/mnt/data/SP_train.npy', allow_pickle=True)
+test_data = np.load('/mnt/data/SP_test.npy', allow_pickle=True)
+test_answer_indices = np.load('/mnt/data/SP_test_answer.npy', allow_pickle=True)
 
 # Prepare training data
 train_texts = []
@@ -23,11 +24,10 @@ for item in train_data:
     context = f"{question} Choices: {', '.join(choices)}"
     
     train_texts.append(context)
-    train_labels.append(0)  # Label 0 indicates the first choice (correct answer)
+    train_labels.append(0)  # Assuming 0 is the label for the correct answer
 
 # Prepare test data
 test_texts = []
-test_labels = []
 for item in test_data:
     question = item.get('question', 'No question provided')
     answer = str(item.get('answer', 'No answer provided'))
@@ -40,13 +40,12 @@ for item in test_data:
     context = f"{question} Choices: {', '.join(choices)}"
     
     test_texts.append(context)
-    test_labels.append(0)  # Label 0 indicates the first choice as the correct answer
 
 # Initialize the tokenizer and model for text generation with Llama
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-# Check if the tokenizer has a pad token; if not, set it to eos_token or a custom pad token
+# Add padding token if missing
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
@@ -59,8 +58,8 @@ pipe = pipeline(
     device_map="auto"
 )
 
-# Function to generate predictions and compare with true labels
-def generate_predictions_and_evaluate(texts, true_labels):
+# Function to generate predictions
+def generate_predictions_and_evaluate(texts, true_indices):
     predicted_labels = []
     for i, context in enumerate(texts):
         messages = [
@@ -71,27 +70,10 @@ def generate_predictions_and_evaluate(texts, true_labels):
         # Generate response
         output = pipe(messages, max_new_tokens=50)
         
-        # Debugging: Print the output structure to understand its format
-        print(f"Output structure for message {i}: {output}")
-        
-        # Extract generated text based on observed structure
-        generated_text = ""
-        if isinstance(output, list) and len(output) > 0:
-            # Attempt to extract text safely if it contains dictionaries
-            if "generated_text" in output[0] and isinstance(output[0]["generated_text"], str):
-                generated_text = output[0]["generated_text"]
-            elif "generated_text" in output[0] and isinstance(output[0]["generated_text"], list):
-                # If it's a list of dictionaries or strings, concatenate the text parts
-                generated_text = " ".join(
-                    [str(part["text"]) if isinstance(part, dict) and "text" in part else str(part)
-                     for part in output[0]["generated_text"]]
-                )
+        # Extract generated text
+        generated_text = output[0].get("generated_text", "")
 
-        # Ensure generated_text is a single string at this point
-        if isinstance(generated_text, list):
-            generated_text = " ".join(generated_text)
-
-        # Extract predicted answer based on presence of known options
+        # Extract predicted answer index by matching choices
         choices = context.split("Choices: ")[1].split(", ")
         predicted_label = -1  # Default to -1 if no match is found
         for idx, choice in enumerate(choices):
@@ -101,21 +83,20 @@ def generate_predictions_and_evaluate(texts, true_labels):
         predicted_labels.append(predicted_label)
 
     # Calculate accuracy and F1 score based on predicted vs true labels
-    accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average='weighted')
+    accuracy = accuracy_score(true_indices, predicted_labels)
+    f1 = f1_score(true_indices, predicted_labels, average='weighted')
     print(f"Accuracy: {accuracy}")
     print(f"F1 Score: {f1}")
 
     return predicted_labels
 
-
 # Generate predictions and evaluate on test data
-predicted_labels = generate_predictions_and_evaluate(test_texts, test_labels)
+predicted_labels = generate_predictions_and_evaluate(test_texts, test_answer_indices)
 
 # Save predictions to a CSV file for review
 df_predictions = pd.DataFrame({
     'Question': test_texts,
-    'True Label': test_labels,
+    'True Label': test_answer_indices,
     'Predicted Label': predicted_labels
 })
 df_predictions.to_csv('predictions.csv', index=False)
