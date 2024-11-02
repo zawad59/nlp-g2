@@ -10,6 +10,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 # Check if the tokenizer has a padding token; if not, add one
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+train_labels = torch.tensor(train_labels, dtype=torch.long)
 model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=len(set(train_labels)))
 model.resize_token_embeddings(len(tokenizer))
 
