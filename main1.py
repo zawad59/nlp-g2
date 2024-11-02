@@ -71,7 +71,9 @@ def generate_predictions_and_evaluate(texts, true_labels):
             {"role": "user", "content": context},
         ]
         output = pipe(messages, max_new_tokens=50)
-        generated_text = output[0]["generated_text"]
+
+        # Ensure output is correctly accessed as a string
+        generated_text = output[0]["generated_text"] if isinstance(output, list) and "generated_text" in output[0] else ""
 
         # Extract predicted answer based on presence of known options
         choices = context.split("Choices: ")[1].split(", ")
@@ -89,6 +91,8 @@ def generate_predictions_and_evaluate(texts, true_labels):
     print(f"F1 Score: {f1}")
 
     return predicted_labels
+
+
 
 # Generate predictions and evaluate on test data
 predicted_labels = generate_predictions_and_evaluate(test_texts, test_labels)
