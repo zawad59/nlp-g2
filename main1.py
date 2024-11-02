@@ -5,9 +5,9 @@ from transformers import AutoTokenizer, pipeline
 from sklearn.metrics import accuracy_score, f1_score
 
 # Load the training and test data
-train_data = np.load('SP_train.npy', allow_pickle=True)
-test_data = np.load('SP_test.npy', allow_pickle=True)
-test_answer_indices = np.load('SP_test_answer.npy', allow_pickle=True)
+train_data = np.load('/mnt/data/SP_train.npy', allow_pickle=True)
+test_data = np.load('/mnt/data/SP_test.npy', allow_pickle=True)
+test_answer_indices = np.load('/mnt/data/SP_test_answer.npy', allow_pickle=True)
 
 # Prepare training data
 train_texts = []
@@ -58,7 +58,7 @@ pipe = pipeline(
     device_map="auto"
 )
 
-# Function to generate predictions and compare with true labels
+# Function to generate predictions
 def generate_predictions_and_evaluate(texts, true_indices):
     predicted_labels = []
     for i, context in enumerate(texts):
@@ -95,6 +95,10 @@ def generate_predictions_and_evaluate(texts, true_indices):
                 break
         predicted_labels.append(predicted_label)
 
+    # Convert both arrays to 1-D integer arrays
+    true_indices = np.array(true_indices).astype(int).flatten()
+    predicted_labels = np.array(predicted_labels).astype(int).flatten()
+
     # Calculate accuracy and F1 score based on predicted vs true labels
     accuracy = accuracy_score(true_indices, predicted_labels)
     f1 = f1_score(true_indices, predicted_labels, average='weighted')
@@ -114,4 +118,3 @@ df_predictions = pd.DataFrame({
 })
 df_predictions.to_csv('predictions.csv', index=False)
 print("Predicted labels saved to predictions.csv.")
-
