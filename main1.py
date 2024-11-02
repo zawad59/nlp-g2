@@ -7,11 +7,6 @@ from transformers import pipeline
 # Set CUDA_LAUNCH_BLOCKING for debugging CUDA issues
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-# Load the training data (if needed for other purposes, we load it here)
-train_data = np.load('SP_train.npy', allow_pickle=True)
-train_texts = [item['question'] for item in train_data]
-train_labels = [item['label'] for item in train_data]  # Load labels if needed for training
-
 # Load the test data
 test_data = np.load('SP_test.npy', allow_pickle=True)
 test_texts = [item['question'] for item in test_data]
@@ -21,14 +16,14 @@ model_id = "meta-llama/Llama-3.2-3B-Instruct"
 pipe = pipeline(
     "text-generation",
     model=model_id,
-    torch_dtype=torch.bfloat16,
+    torch_dtype=torch.float16,  # Use float16 if supported for faster generation
     device_map="auto",
 )
 
 # Define the system prompt for pirate speak
 system_prompt = "You are a pirate chatbot who always responds in pirate speak!"
 
-# Generate responses for each question in the test set
+# Generate responses with fewer tokens for faster response time
 generated_responses = []
 for question in test_texts:
     messages = [
@@ -37,7 +32,7 @@ for question in test_texts:
     ]
     output = pipe(
         messages,
-        max_new_tokens=256,
+        max_new_tokens=50,  # Reduced from 256 for faster generation
     )
     generated_response = output[0]["generated_text"]
     generated_responses.append(generated_response)
