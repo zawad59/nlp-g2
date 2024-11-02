@@ -23,7 +23,7 @@ test_texts = [item['question'] for item in test_data]
 # test_labels = [item['label'] for item in test_data]
 
 # Load a pretrained tokenizer and model
-model_name = "distilbert-base-uncased"
+model_name = "meta-llama/Llama-3.2-3B"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 # Check if the tokenizer has a padding token; if not, add one
