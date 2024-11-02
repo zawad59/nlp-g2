@@ -6,6 +6,9 @@ from sklearn.metrics import accuracy_score, f1_score
 # Load your Llama model and tokenizer
 model_name = "meta-llama/Llama-3.2-3B"  # Replace with the actual path to the Llama model
 tokenizer = AutoTokenizer.from_pretrained(model_name)
+# Check if the tokenizer has a padding token; if not, add one
+if tokenizer.pad_token is None:
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=4)  # Assuming 4 choices per question
 
 # Load the training data
