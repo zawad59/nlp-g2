@@ -13,26 +13,28 @@ train_texts = []
 train_labels = []
 for item in train_data:
     question = item['question']
-    answer = item['answer']
-    distractors = [item['distractor1'], item['distractor2'], item['distractor(unsure)']]
-    choices = [answer] + distractors  # First item is the correct answer
+    answer = str(item['answer'])  # Convert answer to string
+    distractors = [str(item.get('distractor1', '')), str(item.get('distractor2', '')), str(item.get('distractor(unsure)', ''))]
+    choices = [answer] + distractors  # Ensure all elements are strings
     context = f"{question} Choices: {', '.join(choices)}"
     
     train_texts.append(context)
-    train_labels.append(0)  # Label 0 for the first choice as the correct answer
+    train_labels.append(0)  # Label 0 indicates the first choice (correct answer)
 
 # Prepare test data
 test_texts = []
 test_labels = []
 for item in test_data:
     question = item['question']
-    answer = item['answer']
-    distractors = [item['distractor1'], item['distractor2'], item['distractor(unsure)']]
-    choices = [answer] + distractors
+    answer = str(item['answer'])  # Convert answer to string
+    distractors = [str(item.get('distractor1', '')), str(item.get('distractor2', '')), str(item.get('distractor(unsure)', ''))]
+    choices = [answer] + distractors  # Ensure all elements are strings
     context = f"{question} Choices: {', '.join(choices)}"
     
     test_texts.append(context)
-    test_labels.append(0)  # Label 0 for the first choice as the correct answer
+    test_labels.append(0)  # Label 0 indicates the first choice as the correct answer
+
+
 
 # Initialize the tokenizer and model for text generation with Llama
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
