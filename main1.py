@@ -81,11 +81,11 @@ predicted_labels = np.argmax(predictions.predictions, axis=1)
 
 # If test labels are available, calculate accuracy and F1 score
 # Uncomment the following lines if test labels are available
-# test_labels_tensor = torch.tensor(test_labels)
-# accuracy = accuracy_score(test_labels, predicted_labels)
-# f1 = f1_score(test_labels, predicted_labels, average='weighted')
-# print(f"Accuracy: {accuracy}")
-# print(f"F1 Score: {f1}")
+test_labels_tensor = torch.tensor(test_labels)
+accuracy = accuracy_score(test_labels, predicted_labels)
+f1 = f1_score(test_labels, predicted_labels, average='weighted')
+print(f"Accuracy: {accuracy}")
+print(f"F1 Score: {f1}")
 
 # Save predictions to a CSV file
 df_predictions = pd.DataFrame({
