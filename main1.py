@@ -58,7 +58,7 @@ pipe = pipeline(
     device_map="auto"
 )
 
-# Function to generate predictions
+# Function to generate predictions and compare with true labels
 def generate_predictions_and_evaluate(texts, true_indices):
     predicted_labels = []
     for i, context in enumerate(texts):
@@ -70,8 +70,21 @@ def generate_predictions_and_evaluate(texts, true_indices):
         # Generate response
         output = pipe(messages, max_new_tokens=50)
         
-        # Extract generated text
-        generated_text = output[0].get("generated_text", "")
+        # Debugging: Print the output structure to understand its format
+        print(f"Output structure for message {i}: {output}")
+        
+        # Extract generated text safely
+        generated_text = ""
+        if isinstance(output, list) and len(output) > 0:
+            # Try to get "generated_text" or join if it's a list
+            generated_content = output[0].get("generated_text", "")
+            if isinstance(generated_content, list):
+                generated_text = " ".join([str(part) for part in generated_content])
+            elif isinstance(generated_content, str):
+                generated_text = generated_content
+        
+        # Ensure generated_text is a single string
+        generated_text = str(generated_text)
 
         # Extract predicted answer index by matching choices
         choices = context.split("Choices: ")[1].split(", ")
@@ -101,3 +114,4 @@ df_predictions = pd.DataFrame({
 })
 df_predictions.to_csv('predictions.csv', index=False)
 print("Predicted labels saved to predictions.csv.")
+
