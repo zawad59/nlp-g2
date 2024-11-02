@@ -71,18 +71,25 @@ def generate_predictions_and_evaluate(texts, true_labels):
         # Generate response
         output = pipe(messages, max_new_tokens=50)
         
-        # Debugging: Print the output structure
+        # Debugging: Print the output structure to understand its format
         print(f"Output structure for message {i}: {output}")
         
         # Extract generated text based on observed structure
         generated_text = ""
         if isinstance(output, list) and len(output) > 0:
-            # Try to extract the generated text safely
-            generated_text = output[0].get("generated_text", "")
-        
-        # Ensure generated_text is a single string
+            # Attempt to extract text safely if it contains dictionaries
+            if "generated_text" in output[0] and isinstance(output[0]["generated_text"], str):
+                generated_text = output[0]["generated_text"]
+            elif "generated_text" in output[0] and isinstance(output[0]["generated_text"], list):
+                # If it's a list of dictionaries or strings, concatenate the text parts
+                generated_text = " ".join(
+                    [str(part["text"]) if isinstance(part, dict) and "text" in part else str(part)
+                     for part in output[0]["generated_text"]]
+                )
+
+        # Ensure generated_text is a single string at this point
         if isinstance(generated_text, list):
-            generated_text = " ".join(generated_text)  # Join list into a single string if necessary
+            generated_text = " ".join(generated_text)
 
         # Extract predicted answer based on presence of known options
         choices = context.split("Choices: ")[1].split(", ")
@@ -100,6 +107,7 @@ def generate_predictions_and_evaluate(texts, true_labels):
     print(f"F1 Score: {f1}")
 
     return predicted_labels
+
 
 # Generate predictions and evaluate on test data
 predicted_labels = generate_predictions_and_evaluate(test_texts, test_labels)
