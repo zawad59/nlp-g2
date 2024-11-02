@@ -19,7 +19,13 @@ for item in train_data:
     question = item['question']
     correct_answer = item['answer']
     choices = item['choice_list']
-    correct_index = choices.index(correct_answer)
+    # Assuming choices is defined somewhere in your code
+    try:
+        correct_index = choices.index(correct_answer)
+    except ValueError:
+        print(f"'{correct_answer}' is not in choices list:", choices)
+        correct_index = None  # or assign a default index or value if needed
+
     
     # Encode question with each choice
     for i, choice in enumerate(choices):
