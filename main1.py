@@ -5,8 +5,8 @@ from transformers import AutoTokenizer, pipeline
 from sklearn.metrics import accuracy_score, f1_score
 
 # Load the training and test data
-train_data = np.load('/mnt/data/SP_train.npy', allow_pickle=True)
-test_data = np.load('/mnt/data/SP_test.npy', allow_pickle=True)
+train_data = np.load('SP_train.npy', allow_pickle=True)
+test_data = np.load('SP_test.npy', allow_pickle=True)
 
 # Prepare training data
 train_texts = []
