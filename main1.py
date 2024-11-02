@@ -12,9 +12,13 @@ test_data = np.load('SP_test.npy', allow_pickle=True)
 train_texts = []
 train_labels = []
 for item in train_data:
-    question = item['question']
-    answer = str(item['answer'])  # Convert answer to string
-    distractors = [str(item.get('distractor1', '')), str(item.get('distractor2', '')), str(item.get('distractor(unsure)', ''))]
+    question = item.get('question', 'No question provided')  # Use a default if 'question' is missing
+    answer = str(item.get('answer', 'No answer provided'))   # Use a default if 'answer' is missing
+    distractors = [
+        str(item.get('distractor1', 'No distractor1')),
+        str(item.get('distractor2', 'No distractor2')),
+        str(item.get('distractor(unsure)', 'No distractor(unsure)'))
+    ]
     choices = [answer] + distractors  # Ensure all elements are strings
     context = f"{question} Choices: {', '.join(choices)}"
     
@@ -25,14 +29,19 @@ for item in train_data:
 test_texts = []
 test_labels = []
 for item in test_data:
-    question = item['question']
-    answer = str(item['answer'])  # Convert answer to string
-    distractors = [str(item.get('distractor1', '')), str(item.get('distractor2', '')), str(item.get('distractor(unsure)', ''))]
+    question = item.get('question', 'No question provided')  # Use a default if 'question' is missing
+    answer = str(item.get('answer', 'No answer provided'))   # Use a default if 'answer' is missing
+    distractors = [
+        str(item.get('distractor1', 'No distractor1')),
+        str(item.get('distractor2', 'No distractor2')),
+        str(item.get('distractor(unsure)', 'No distractor(unsure)'))
+    ]
     choices = [answer] + distractors  # Ensure all elements are strings
     context = f"{question} Choices: {', '.join(choices)}"
     
     test_texts.append(context)
     test_labels.append(0)  # Label 0 indicates the first choice as the correct answer
+
 
 
 
