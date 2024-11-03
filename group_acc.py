@@ -3,8 +3,8 @@ import pandas as pd
 import torch
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline, AutoTokenizer
-from sklearn.metrics import accuracy_score
-
+from sklearn.metrics.pairwise import euclidean_distances
+from collections import Counter
 
 # Load the data from SP_dev.npy
 data = np.load('SP_dev.npy', allow_pickle=True)
@@ -20,7 +20,6 @@ for item in data:
 # Initialize sentence embedding model for similarity checks
 embedder = SentenceTransformer('paraphrase-MiniLM-L12-v2')
 
-
 # Initialize the Llama model for text generation
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -28,15 +27,15 @@ pipe = pipeline(
     "text-generation",
     model=model_id,
     tokenizer=tokenizer,
-    temperature=0.3,  # Lower temperature for more deterministic responses
+    temperature=0.1,  # Lower temperature for more deterministic responses
     max_new_tokens=50,
     torch_dtype=torch.bfloat16,
     device_map="auto"
 )
 
-
-# Set a similarity threshold
+# Set parameters
 similarity_threshold = 0.85
+distance_weight = 0.5  # Adjust this weight to tune the influence of Euclidean distance
 interval_accuracies = []
 all_results = []
 batch_size = 5  # Number of groups per time interval
@@ -55,9 +54,9 @@ for start in range(0, len(groups), batch_size):
         questions = [item['question'] for item in items]
         answers = [item['answer'] for item in items]
         embeddings = embedder.encode(questions)
+        predictions = []  # Store all predicted answers in this group
 
         # Calculate pairwise cosine similarities and process predictions
-        correct_predictions = True
         for i in range(len(questions)):
             for j in range(i + 1, len(questions)):
                 # Calculate cosine similarity
@@ -65,47 +64,55 @@ for start in range(0, len(groups), batch_size):
 
                 # If questions are semantically similar, check if predictions align
                 if similarity > similarity_threshold:
-                    example = ("Here’s an example reasoning: 'A teacher in an orphanage spanked children without parent objections because there were no parents.'")
-                    prompt = (f"Question: {questions[i]}\n" f"Consider each answer carefully. Choose the answer that best fits this question:\n" f"{', '.join(items[i]['choice_list'])}\nAnswer:")
+                    example = ("Consider the logic and choose the most relevant answer based on this example reasoning.")
+                    prompt = (f"{example}\nQuestion: {questions[i]}\n"
+                              f"Select the answer that best fits the question:\n{', '.join(items[i]['choice_list'])}\nAnswer:")
 
-
+                    # Generate response
                     result = pipe(prompt, max_new_tokens=30)
-                    
-                    # Extract generated text
                     generated_text = result[0]['generated_text'].strip()
 
-                    # Calculate similarity between generated text and each choice
+                    # Calculate similarity and distance between generated text and each choice
                     generated_embedding = embedder.encode(generated_text, convert_to_tensor=True)
                     choice_embeddings = embedder.encode(items[i]['choice_list'], convert_to_tensor=True)
-                    similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy()
 
-                    # Select the answer with the highest similarity score
-                    predicted_index = int(np.argmax(similarities))
-                    # Instead of direct string matching, compare using similarity
-                    predicted_answer = max(items[i]['choice_list'],  key=lambda choice: util.cos_sim(embedder.encode(generated_text), embedder.encode(choice)).item())
+                    # Calculate cosine similarities
+                    cosine_similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy()
 
+                    # Calculate Euclidean distances
+                    euclidean_distances_to_choices = euclidean_distances(
+                        generated_embedding.cpu().numpy().reshape(1, -1),
+                        choice_embeddings.cpu().numpy()
+                    ).flatten()
 
-                    # Record if the prediction matches the actual answer
-                    correct_prediction = predicted_answer == answers[i]
-                    if not correct_prediction:
-                        correct_predictions = False
+                    # Combine cosine similarity and inverse Euclidean distance
+                    combined_scores = cosine_similarities - distance_weight * (euclidean_distances_to_choices / np.max(euclidean_distances_to_choices))
+
+                    # Select the answer with the highest combined score
+                    predicted_index = int(np.argmax(combined_scores))
+                    predicted_answer = items[i]['choice_list'][predicted_index]
+                    predictions.append(predicted_answer)
 
                     interval_results.append({
                         'Interval': start // batch_size + 1,
                         'Group ID': group_id,
                         'Question 1': questions[i],
                         'Question 2': questions[j],
-                        'Similarity': similarity,
+                        'Cosine Similarity': similarity,
+                        'Euclidean Distance': euclidean_distances_to_choices[predicted_index],
+                        'Combined Score': combined_scores[predicted_index],
                         'Predicted Answer': predicted_answer,
-                        'Actual Answer': answers[i],
-                        'Correct Prediction': correct_prediction
+                        'Actual Answer': answers[i]
                     })
 
-        # Record if all predictions for this group were consistent
-        interval_correct_predictions.append(correct_predictions)
+        # Majority voting for group-based answer
+        if predictions:
+            final_prediction = Counter(predictions).most_common(1)[0][0]  # Get the most common answer
+            correct_prediction = final_prediction == answers[0]  # Check with the first answer as reference
+            interval_correct_predictions.append(correct_prediction)
 
     # Calculate accuracy for this interval
-    interval_accuracy = sum(interval_correct_predictions) / len(interval_correct_predictions)
+    interval_accuracy = sum(interval_correct_predictions) / len(interval_correct_predictions) if interval_correct_predictions else 0
     interval_accuracies.append({
         'Interval': start // batch_size + 1,
         'Accuracy': interval_accuracy * 100
