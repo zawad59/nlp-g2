@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, pipeline
+from transformers import AutoTokenizer, AutoModel, pipeline
 from sklearn.metrics import accuracy_score, f1_score
+from sentence_transformers import SentenceTransformer, util
 
 # Load the training and test data
 train_data = np.load('SP_train.npy', allow_pickle=True)
@@ -41,7 +42,10 @@ pipe = pipeline(
     device_map="auto"
 )
 
-# Function to generate predictions and explanations with zero-shot or one-shot learning
+# Initialize a sentence transformer model for semantic similarity
+similarity_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Function to generate predictions and explanations with semantic similarity
 def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids, mode="zero-shot"):
     predicted_labels = []
     predicted_answers = []
@@ -76,24 +80,28 @@ def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids
                 generated_text = " ".join([str(part) for part in generated_content])
             elif isinstance(generated_content, str):
                 generated_text = generated_content
-        
+
         # Ensure generated_text is a single string
         generated_text = str(generated_text)
 
-        # Extract predicted answer index by matching choices
-        predicted_label = -1  # Default to -1 if no match is found
-        explanation = "No match found in generated text"
-        for idx, choice in enumerate(choice_list):
-            if choice.lower() in generated_text.lower():
-                predicted_label = idx
-                explanation = f"Chosen because '{choice}' matched part of the generated text."
-                break
-        
+        # Compute similarity between the generated text and each choice
+        generated_embedding = similarity_model.encode(generated_text, convert_to_tensor=True)
+        choice_embeddings = similarity_model.encode(choice_list, convert_to_tensor=True)
+        similarities = util.cos_sim(generated_embedding, choice_embeddings)[0].cpu().numpy()
+
+        # Select the choice with the highest similarity score
+        predicted_label = int(np.argmax(similarities))
+        explanation = (
+            f"The predicted answer '{choice_list[predicted_label]}' was chosen because it has the highest "
+            f"semantic similarity ({similarities[predicted_label]:.2f}) to the generated response. "
+            f"Generated Response: '{generated_text}'"
+        )
+
         predicted_labels.append(predicted_label)
 
         # Store actual and predicted answers in text form
         actual_answer = choice_list[true_indices[i]]
-        predicted_answer = choice_list[predicted_label] if predicted_label != -1 else "No match found"
+        predicted_answer = choice_list[predicted_label]
         
         actual_answers.append(actual_answer)
         predicted_answers.append(predicted_answer)
