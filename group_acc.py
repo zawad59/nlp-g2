@@ -1,65 +1,104 @@
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer, util
-from transformers import pipeline, AutoTokenizer
-from sklearn.metrics import accuracy_score
+import torch
+from transformers import AutoTokenizer, pipeline
+from sklearn.metrics import accuracy_score, f1_score
 
-# Load the data
-data = [
-    {'id': 'SP-164', 'question': 'Not a single parent objected when the teacher spanked every child in the class. How come?', 'answer': 'The teacher was in an orphanage school.'},
-    {'id': 'SP-164_SR', 'question': 'When the instructor spanked every child in the class, not a single parent protested. Why is this so?', 'answer': 'The teacher was in an orphanage school.'},
-    {'id': 'SP-164_CR', 'question': "Mark was in the kitchen cooking everyday and yet he wasn't getting paid. He had to buy all the ingredients and everything himself as well. why?", 'answer': 'He was a chef and a dad at the same time. when he was home, nobody was paying him to cook'},
-    # Add more data here...
-]
+# Load the training and test data
+train_data = np.load('SP_train.npy', allow_pickle=True)
+test_data = np.load('SP_test.npy', allow_pickle=True)
+test_answers = np.load('SP_test_answer.npy', allow_pickle=True)
 
-# Group questions by prefix
-groups = {}
-for item in data:
-    group_id = item['id'].split('_')[0]
-    if group_id not in groups:
-        groups[group_id] = []
-    groups[group_id].append(item)
+# Extract only the correct answer indices from test_answers
+test_answer_indices = [int(answer[1]) for answer in test_answers]  # Second element is the correct answer index
 
-# Initialize sentence embedding model
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+# Prepare training data
+train_texts = []
+train_labels = []
+for item in train_data:
+    question = item['question']
+    choice_list = item['choice_list']
+    correct_index = item['label']  # Index of the correct answer
+    context = f"{question} Choices: {', '.join(choice_list)}"
+    
+    train_texts.append(context)
+    train_labels.append(correct_index)
 
-# Initialize the model for predictions
+# Prepare test data
+test_texts = []
+for item in test_data:
+    question = item['question']
+    choice_list = item['choice_list']
+    context = f"{question} Choices: {', '.join(choice_list)}"
+    
+    test_texts.append(context)
+
+# Initialize the tokenizer and model for text generation with Llama
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-pipe = pipeline("text-generation", model=model_id, tokenizer=tokenizer, device_map="auto")
 
-# Set a similarity threshold
-similarity_threshold = 0.85
-group_accuracies = []
+# Add padding token if missing
+if tokenizer.pad_token is None:
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
-# Process each group
-for group_id, items in groups.items():
-    # Generate sentence embeddings for the group's questions
-    questions = [item['question'] for item in items]
-    answers = [item['answer'] for item in items]
-    embeddings = embedder.encode(questions)
+# Initialize the text generation pipeline
+pipe = pipeline(
+    "text-generation",
+    model=model_id,
+    tokenizer=tokenizer,
+    torch_dtype=torch.float16,
+    device_map="auto"
+)
 
-    # Calculate pairwise cosine similarities
-    correct_predictions = True
-    for i in range(len(questions)):
-        for j in range(i + 1, len(questions)):
-            # Calculate cosine similarity
-            similarity = util.cos_sim(embeddings[i], embeddings[j]).item()
+# Function to generate predictions and compare with true labels
+def generate_predictions_and_evaluate(texts, true_indices):
+    predicted_labels = []
+    for i, context in enumerate(texts):
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": context},
+        ]
+        
+        # Generate response
+        output = pipe(messages, max_new_tokens=50)
+        
+        # Extract generated text safely
+        generated_text = ""
+        if isinstance(output, list) and len(output) > 0:
+            generated_content = output[0].get("generated_text", "")
+            if isinstance(generated_content, list):
+                generated_text = " ".join([str(part) for part in generated_content])
+            elif isinstance(generated_content, str):
+                generated_text = generated_content
+        
+        # Ensure generated_text is a single string
+        generated_text = str(generated_text)
 
-            # If the questions are semantically similar, check if predictions align
-            if similarity > similarity_threshold:
-                prompt = questions[i] + "\nChoices: " + answers[i]
-                result = pipe(prompt, max_new_tokens=30)
-                
-                # Extract generated text and compare with answer
-                generated_text = result[0]['generated_text']
-                predicted_answer = generated_text.strip()
+        # Extract predicted answer index by matching choices
+        choices = context.split("Choices: ")[1].split(", ")
+        predicted_label = -1  # Default to -1 if no match is found
+        for idx, choice in enumerate(choices):
+            if choice.lower() in generated_text.lower():
+                predicted_label = idx
+                break
+        predicted_labels.append(predicted_label)
 
-                if predicted_answer != answers[i]:
-                    correct_predictions = False
+    # Calculate accuracy and F1 score based on predicted vs true labels
+    accuracy = accuracy_score(true_indices, predicted_labels)
+    f1 = f1_score(true_indices, predicted_labels, average='weighted')
+    print(f"Accuracy: {accuracy}")
+    print(f"F1 Score: {f1}")
 
-    group_accuracies.append(correct_predictions)
+    return predicted_labels
 
-# Calculate group-based accuracy
-group_accuracy = sum(group_accuracies) / len(group_accuracies)
-print(f"Group-Based Accuracy: {group_accuracy * 100:.2f}%")
+# Generate predictions and evaluate on test data
+predicted_labels = generate_predictions_and_evaluate(test_texts, test_answer_indices)
+
+# Save predictions to a CSV file for review
+df_predictions = pd.DataFrame({
+    'Question': test_texts,
+    'True Label': test_answer_indices,
+    'Predicted Label': predicted_labels
+})
+df_predictions.to_csv('predictions.csv', index=False)
+print("Predicted labels saved to predictions.csv.")
