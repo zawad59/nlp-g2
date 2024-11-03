@@ -75,18 +75,27 @@ for start in range(0, len(groups), batch_size):
                     # Calculate similarity and distance between generated text and each choice
                     generated_embedding = embedder.encode(generated_text, convert_to_tensor=True)
                     choice_embeddings = embedder.encode(items[i]['choice_list'], convert_to_tensor=True)
+                    
+                    # Calculate cosine similarities and check dimensions
+                    cosine_similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy().flatten()
+                    if cosine_similarities.size != len(items[i]['choice_list']):
+                        print(f"Warning: Dimension mismatch in cosine similarity calculation for group {group_id}")
+                        continue
 
-                    # Calculate cosine similarities
-                    cosine_similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy()
-
-                    # Calculate Euclidean distances
+                    # Calculate Euclidean distances and check dimensions
                     euclidean_distances_to_choices = euclidean_distances(
                         generated_embedding.cpu().numpy().reshape(1, -1),
                         choice_embeddings.cpu().numpy()
                     ).flatten()
+                    if euclidean_distances_to_choices.size != len(items[i]['choice_list']):
+                        print(f"Warning: Dimension mismatch in Euclidean distance calculation for group {group_id}")
+                        continue
 
-                    # Combine cosine similarity and inverse Euclidean distance
-                    combined_scores = cosine_similarities - distance_weight * (euclidean_distances_to_choices / np.max(euclidean_distances_to_choices))
+                    # Normalize Euclidean distances for better scaling
+                    euclidean_distances_normalized = euclidean_distances_to_choices / np.max(euclidean_distances_to_choices)
+                    
+                    # Combine cosine similarity and inverse Euclidean distance with weights
+                    combined_scores = cosine_similarities - distance_weight * euclidean_distances_normalized
 
                     # Select the answer with the highest combined score
                     predicted_index = int(np.argmax(combined_scores))
@@ -99,7 +108,7 @@ for start in range(0, len(groups), batch_size):
                         'Question 1': questions[i],
                         'Question 2': questions[j],
                         'Cosine Similarity': similarity,
-                        'Euclidean Distance': euclidean_distances_to_choices[predicted_index],
+                        'Euclidean Distance': euclidean_distances_normalized[predicted_index],
                         'Combined Score': combined_scores[predicted_index],
                         'Predicted Answer': predicted_answer,
                         'Actual Answer': answers[i]
