@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
+import torch
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline, AutoTokenizer
 from sklearn.metrics import accuracy_score
+
 
 # Load the data from SP_dev.npy
 data = np.load('SP_dev.npy', allow_pickle=True)
