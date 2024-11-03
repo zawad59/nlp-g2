@@ -9,20 +9,9 @@ train_data = np.load('SP_train.npy', allow_pickle=True)
 test_data = np.load('SP_test.npy', allow_pickle=True)
 test_answers = np.load('SP_test_answer.npy', allow_pickle=True)
 
-# Extract only the correct answer indices from test_answers
+# Extract question IDs and correct answer indices from test_answers
+question_ids = [answer[0] for answer in test_answers]  # First element is the question ID
 test_answer_indices = [int(answer[1]) for answer in test_answers]  # Second element is the correct answer index
-
-# Prepare training data
-train_texts = []
-train_labels = []
-for item in train_data:
-    question = item['question']
-    choice_list = item['choice_list']
-    correct_index = item['label']  # Index of the correct answer
-    context = f"{question} Choices: {', '.join(choice_list)}"
-    
-    train_texts.append(context)
-    train_labels.append(correct_index)
 
 # Prepare test data
 test_texts = []
@@ -52,16 +41,28 @@ pipe = pipeline(
     device_map="auto"
 )
 
-# Function to generate predictions and compare with true labels
-def generate_predictions_and_evaluate(texts, choices, true_indices):
+# Function to generate predictions and explanations with zero-shot or one-shot learning
+def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids, mode="zero-shot"):
     predicted_labels = []
     predicted_answers = []
     actual_answers = []
+    explanations = []
+
+    # Example for one-shot learning
+    example_question = train_data[0]['question']
+    example_answer = train_data[0]['choice_list'][train_data[0]['label']]
+    example_context = f"Example Question: {example_question} Correct Answer: {example_answer}\n\n"
 
     for i, (context, choice_list) in enumerate(zip(texts, choices)):
+        # Prepare context for zero-shot or one-shot
+        if mode == "zero-shot":
+            prompt = context
+        elif mode == "one-shot":
+            prompt = example_context + "Question: " + context
+
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": context},
+            {"role": "user", "content": prompt},
         ]
         
         # Generate response
@@ -81,9 +82,11 @@ def generate_predictions_and_evaluate(texts, choices, true_indices):
 
         # Extract predicted answer index by matching choices
         predicted_label = -1  # Default to -1 if no match is found
+        explanation = "No match found in generated text"
         for idx, choice in enumerate(choice_list):
             if choice.lower() in generated_text.lower():
                 predicted_label = idx
+                explanation = f"Chosen because '{choice}' matched part of the generated text."
                 break
         
         predicted_labels.append(predicted_label)
@@ -94,23 +97,46 @@ def generate_predictions_and_evaluate(texts, choices, true_indices):
         
         actual_answers.append(actual_answer)
         predicted_answers.append(predicted_answer)
+        explanations.append(explanation)
 
     # Calculate accuracy and F1 score based on predicted vs true labels
     accuracy = accuracy_score(true_indices, predicted_labels)
     f1 = f1_score(true_indices, predicted_labels, average='weighted')
-    print(f"Accuracy: {accuracy}")
-    print(f"F1 Score: {f1}")
+    print(f"Accuracy ({mode}): {accuracy}")
+    print(f"F1 Score ({mode}): {f1}")
 
-    return actual_answers, predicted_answers
+    return question_ids, actual_answers, predicted_answers, explanations
 
-# Generate predictions and evaluate on test data
-actual_answers, predicted_answers = generate_predictions_and_evaluate(test_texts, test_choices, test_answer_indices)
+# Generate predictions and evaluate on test data for zero-shot learning
+print("Zero-Shot Learning:")
+question_ids, actual_answers, predicted_answers, explanations = generate_predictions_and_evaluate(
+    test_texts, test_choices, test_answer_indices, question_ids, mode="zero-shot"
+)
 
-# Save predictions to a CSV file for review
-df_predictions = pd.DataFrame({
+# Save zero-shot predictions to a CSV file for review
+df_predictions_zero_shot = pd.DataFrame({
+    'Question ID': question_ids,
     'Question': test_texts,
     'Actual Correct Answer': actual_answers,
-    'Predicted Answer': predicted_answers
+    'Predicted Answer': predicted_answers,
+    'Explanation': explanations
 })
-df_predictions.to_csv('predictions.csv', index=False)
-print("Predicted labels saved to predictions.csv.")
+df_predictions_zero_shot.to_csv('predictions_zero_shot.csv', index=False)
+print("Zero-shot predictions saved to predictions_zero_shot.csv.")
+
+# Generate predictions and evaluate on test data for one-shot learning
+print("One-Shot Learning:")
+question_ids, actual_answers, predicted_answers, explanations = generate_predictions_and_evaluate(
+    test_texts, test_choices, test_answer_indices, question_ids, mode="one-shot"
+)
+
+# Save one-shot predictions to a CSV file for review
+df_predictions_one_shot = pd.DataFrame({
+    'Question ID': question_ids,
+    'Question': test_texts,
+    'Actual Correct Answer': actual_answers,
+    'Predicted Answer': predicted_answers,
+    'Explanation': explanations
+})
+df_predictions_one_shot.to_csv('predictions_one_shot.csv', index=False)
+print("One-shot predictions saved to predictions_one_shot.csv.")
