@@ -21,7 +21,16 @@ embedder = SentenceTransformer('all-MiniLM-L6-v2')
 # Initialize the Llama model for text generation
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-pipe = pipeline("text-generation", model=model_id, tokenizer=tokenizer, device_map="auto")
+pipe = pipeline(
+    "text-generation",
+    model=model_id,
+    tokenizer=tokenizer,
+    temperature=0.3,  # Lower temperature for more deterministic responses
+    max_new_tokens=50,
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+
 
 # Set a similarity threshold
 similarity_threshold = 0.85
@@ -53,7 +62,8 @@ for start in range(0, len(groups), batch_size):
 
                 # If questions are semantically similar, check if predictions align
                 if similarity > similarity_threshold:
-                    prompt = f"{questions[i]}\nChoices: {', '.join(items[i]['choice_list'])}"
+                    prompt = (f"Question: {questions[i]}\n" f"Please select the best answer from the following choices:\n" f"{', '.join(items[i]['choice_list'])}\n""Answer:")
+
                     result = pipe(prompt, max_new_tokens=30)
                     
                     # Extract generated text
@@ -66,7 +76,9 @@ for start in range(0, len(groups), batch_size):
 
                     # Select the answer with the highest similarity score
                     predicted_index = int(np.argmax(similarities))
-                    predicted_answer = items[i]['choice_list'][predicted_index]
+                    # Instead of direct string matching, compare using similarity
+                    predicted_answer = max(items[i]['choice_list'],  key=lambda choice: util.cos_sim(embedder.encode(generated_text), embedder.encode(choice)).item())
+
 
                     # Record if the prediction matches the actual answer
                     correct_prediction = predicted_answer == answers[i]
