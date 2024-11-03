@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
-from transformers import AutoTokenizer, AutoModel, pipeline
+from transformers import AutoTokenizer, pipeline
 from sklearn.metrics import accuracy_score, f1_score
 from sentence_transformers import SentenceTransformer, util
 
@@ -33,17 +33,22 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 if tokenizer.pad_token is None:
     tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
-# Initialize the text generation pipeline
+# Initialize the text generation pipeline with bfloat16 for reduced memory usage
 pipe = pipeline(
     "text-generation",
     model=model_id,
     tokenizer=tokenizer,
-    torch_dtype=torch.float16,
+    torch_dtype=torch.bfloat16,
     device_map="auto"
 )
 
-# Initialize a sentence transformer model for semantic similarity
-similarity_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Initialize a sentence transformer model for semantic similarity on CPU
+similarity_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
+
+# Example for one-shot learning
+example_question = train_data[0]['question']
+example_answer = train_data[0]['choice_list'][train_data[0]['label']]
+example_context = f"Example Question: {example_question} Correct Answer: {example_answer}\n\n"
 
 # Function to generate predictions and explanations with semantic similarity
 def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids, mode="zero-shot"):
@@ -51,11 +56,6 @@ def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids
     predicted_answers = []
     actual_answers = []
     explanations = []
-
-    # Example for one-shot learning
-    example_question = train_data[0]['question']
-    example_answer = train_data[0]['choice_list'][train_data[0]['label']]
-    example_context = f"Example Question: {example_question} Correct Answer: {example_answer}\n\n"
 
     for i, (context, choice_list) in enumerate(zip(texts, choices)):
         # Prepare context for zero-shot or one-shot
@@ -115,36 +115,62 @@ def generate_predictions_and_evaluate(texts, choices, true_indices, question_ids
 
     return question_ids, actual_answers, predicted_answers, explanations
 
+# Function to generate predictions in batches to manage memory usage
+def generate_predictions_in_batches(texts, choices, true_indices, question_ids, mode="zero-shot", batch_size=4):
+    all_question_ids = []
+    all_actual_answers = []
+    all_predicted_answers = []
+    all_explanations = []
+
+    for batch_start in range(0, len(texts), batch_size):
+        batch_texts = texts[batch_start:batch_start + batch_size]
+        batch_choices = choices[batch_start:batch_start + batch_size]
+        batch_true_indices = true_indices[batch_start:batch_start + batch_size]
+        batch_question_ids = question_ids[batch_start:batch_start + batch_size]
+
+        # Process each batch
+        ids, actuals, predictions, expls = generate_predictions_and_evaluate(
+            batch_texts, batch_choices, batch_true_indices, batch_question_ids, mode=mode
+        )
+
+        all_question_ids.extend(ids)
+        all_actual_answers.extend(actuals)
+        all_predicted_answers.extend(predictions)
+        all_explanations.extend(expls)
+        torch.cuda.empty_cache()  # Clear memory between batches
+
+    return all_question_ids, all_actual_answers, all_predicted_answers, all_explanations
+
 # Generate predictions and evaluate on test data for zero-shot learning
 print("Zero-Shot Learning:")
-question_ids, actual_answers, predicted_answers, explanations = generate_predictions_and_evaluate(
-    test_texts, test_choices, test_answer_indices, question_ids, mode="zero-shot"
+question_ids_zero, actual_answers_zero, predicted_answers_zero, explanations_zero = generate_predictions_in_batches(
+    test_texts, test_choices, test_answer_indices, question_ids, mode="zero-shot", batch_size=4
 )
 
 # Save zero-shot predictions to a CSV file for review
 df_predictions_zero_shot = pd.DataFrame({
-    'Question ID': question_ids,
+    'Question ID': question_ids_zero,
     'Question': test_texts,
-    'Actual Correct Answer': actual_answers,
-    'Predicted Answer': predicted_answers,
-    'Explanation': explanations
+    'Actual Correct Answer': actual_answers_zero,
+    'Predicted Answer': predicted_answers_zero,
+    'Explanation': explanations_zero
 })
 df_predictions_zero_shot.to_csv('predictions_zero_shot.csv', index=False)
 print("Zero-shot predictions saved to predictions_zero_shot.csv.")
 
 # Generate predictions and evaluate on test data for one-shot learning
 print("One-Shot Learning:")
-question_ids, actual_answers, predicted_answers, explanations = generate_predictions_and_evaluate(
-    test_texts, test_choices, test_answer_indices, question_ids, mode="one-shot"
+question_ids_one, actual_answers_one, predicted_answers_one, explanations_one = generate_predictions_in_batches(
+    test_texts, test_choices, test_answer_indices, question_ids, mode="one-shot", batch_size=4
 )
 
 # Save one-shot predictions to a CSV file for review
 df_predictions_one_shot = pd.DataFrame({
-    'Question ID': question_ids,
+    'Question ID': question_ids_one,
     'Question': test_texts,
-    'Actual Correct Answer': actual_answers,
-    'Predicted Answer': predicted_answers,
-    'Explanation': explanations
+    'Actual Correct Answer': actual_answers_one,
+    'Predicted Answer': predicted_answers_one,
+    'Explanation': explanations_one
 })
 df_predictions_one_shot.to_csv('predictions_one_shot.csv', index=False)
 print("One-shot predictions saved to predictions_one_shot.csv.")
