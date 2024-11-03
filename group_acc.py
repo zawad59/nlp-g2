@@ -18,7 +18,8 @@ for item in data:
     groups[group_id].append(item)
 
 # Initialize sentence embedding model for similarity checks
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+embedder = SentenceTransformer('paraphrase-MiniLM-L12-v2')
+
 
 # Initialize the Llama model for text generation
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
@@ -64,7 +65,9 @@ for start in range(0, len(groups), batch_size):
 
                 # If questions are semantically similar, check if predictions align
                 if similarity > similarity_threshold:
-                    prompt = (f"Question: {questions[i]}\n" f"Please select the best answer from the following choices:\n" f"{', '.join(items[i]['choice_list'])}\n""Answer:")
+                    example = ("Here’s an example reasoning: 'A teacher in an orphanage spanked children without parent objections because there were no parents.'")
+                    prompt = (f"Question: {questions[i]}\n" f"Consider each answer carefully. Choose the answer that best fits this question:\n" f"{', '.join(items[i]['choice_list'])}\nAnswer:")
+
 
                     result = pipe(prompt, max_new_tokens=30)
                     
