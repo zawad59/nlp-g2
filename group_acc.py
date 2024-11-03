@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from collections import Counter
 
 # Load the data from SP_dev.npy
-data = np.load('SP_dev.npy', allow_pickle=True)
+data = np.load('SP_train.npy', allow_pickle=True)
 
 # Group questions by prefix
 groups = {}
@@ -35,7 +35,7 @@ pipe = pipeline(
 
 # Set parameters
 similarity_threshold = 0.85
-distance_weight = 0.4  # Adjust this weight to tune the influence of Euclidean distance
+distance_weight = 0.3  # Adjust this weight to tune the influence of Euclidean distance
 interval_accuracies = []
 all_results = []
 batch_size = 5  # Number of groups per time interval
