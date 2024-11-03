@@ -26,12 +26,14 @@ for item in train_data:
 
 # Prepare test data
 test_texts = []
+test_choices = []  # Store choices for each test question
 for item in test_data:
     question = item['question']
     choice_list = item['choice_list']
     context = f"{question} Choices: {', '.join(choice_list)}"
     
     test_texts.append(context)
+    test_choices.append(choice_list)
 
 # Initialize the tokenizer and model for text generation with Llama
 model_id = "meta-llama/Llama-3.2-3B-Instruct"
@@ -51,9 +53,12 @@ pipe = pipeline(
 )
 
 # Function to generate predictions and compare with true labels
-def generate_predictions_and_evaluate(texts, true_indices):
+def generate_predictions_and_evaluate(texts, choices, true_indices):
     predicted_labels = []
-    for i, context in enumerate(texts):
+    predicted_answers = []
+    actual_answers = []
+
+    for i, (context, choice_list) in enumerate(zip(texts, choices)):
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": context},
@@ -75,13 +80,20 @@ def generate_predictions_and_evaluate(texts, true_indices):
         generated_text = str(generated_text)
 
         # Extract predicted answer index by matching choices
-        choices = context.split("Choices: ")[1].split(", ")
         predicted_label = -1  # Default to -1 if no match is found
-        for idx, choice in enumerate(choices):
+        for idx, choice in enumerate(choice_list):
             if choice.lower() in generated_text.lower():
                 predicted_label = idx
                 break
+        
         predicted_labels.append(predicted_label)
+
+        # Store actual and predicted answers in text form
+        actual_answer = choice_list[true_indices[i]]
+        predicted_answer = choice_list[predicted_label] if predicted_label != -1 else "No match found"
+        
+        actual_answers.append(actual_answer)
+        predicted_answers.append(predicted_answer)
 
     # Calculate accuracy and F1 score based on predicted vs true labels
     accuracy = accuracy_score(true_indices, predicted_labels)
@@ -89,16 +101,16 @@ def generate_predictions_and_evaluate(texts, true_indices):
     print(f"Accuracy: {accuracy}")
     print(f"F1 Score: {f1}")
 
-    return predicted_labels
+    return actual_answers, predicted_answers
 
 # Generate predictions and evaluate on test data
-predicted_labels = generate_predictions_and_evaluate(test_texts, test_answer_indices)
+actual_answers, predicted_answers = generate_predictions_and_evaluate(test_texts, test_choices, test_answer_indices)
 
 # Save predictions to a CSV file for review
 df_predictions = pd.DataFrame({
     'Question': test_texts,
-    'True Label': test_answer_indices,
-    'Predicted Label': predicted_labels
+    'Actual Correct Answer': actual_answers,
+    'Predicted Answer': predicted_answers
 })
 df_predictions.to_csv('predictions.csv', index=False)
 print("Predicted labels saved to predictions.csv.")
