@@ -35,7 +35,7 @@ pipe = pipeline(
 
 # Set parameters
 similarity_threshold = 0.85
-distance_weight = 0.5  # Adjust this weight to tune the influence of Euclidean distance
+distance_weight = 0.4  # Adjust this weight to tune the influence of Euclidean distance
 interval_accuracies = []
 all_results = []
 batch_size = 5  # Number of groups per time interval
