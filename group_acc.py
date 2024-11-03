@@ -56,9 +56,17 @@ for start in range(0, len(groups), batch_size):
                     prompt = f"{questions[i]}\nChoices: {', '.join(items[i]['choice_list'])}"
                     result = pipe(prompt, max_new_tokens=30)
                     
-                    # Extract generated text and compare with answer
-                    generated_text = result[0]['generated_text']
-                    predicted_answer = generated_text.strip()
+                    # Extract generated text
+                    generated_text = result[0]['generated_text'].strip()
+
+                    # Calculate similarity between generated text and each choice
+                    generated_embedding = embedder.encode(generated_text, convert_to_tensor=True)
+                    choice_embeddings = embedder.encode(items[i]['choice_list'], convert_to_tensor=True)
+                    similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy()
+
+                    # Select the answer with the highest similarity score
+                    predicted_index = int(np.argmax(similarities))
+                    predicted_answer = items[i]['choice_list'][predicted_index]
 
                     # Record if the prediction matches the actual answer
                     correct_prediction = predicted_answer == answers[i]
