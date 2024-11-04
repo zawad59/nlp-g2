@@ -156,8 +156,8 @@ def process_mode(mode):
 
     # Save detailed results to CSV
     df_results = pd.DataFrame(all_results)
-    df_results.to_csv(f'interval_predictions_{mode}.csv', index=False)
-    print(f"Prediction details with intervals for {mode} learning saved to 'interval_predictions_{mode}.csv'.")
+    df_results.to_csv(f'Test_interval_predictions_{mode}.csv', index=False)
+    print(f"Prediction details with intervals for {mode} learning saved to 'Test_interval_predictions_{mode}.csv'.")
 
 # Run the function for zero-shot, one-shot, and three-shot learning
 for mode in ["zero-shot", "one-shot", "three-shot"]:
