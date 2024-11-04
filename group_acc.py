@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from collections import Counter
 
 # Load the data from SP_dev.npy
-data = np.load('SP_train.npy', allow_pickle=True)
+data = np.load('SP_dev.npy', allow_pickle=True)
 
 # Group questions by prefix
 groups = {}
@@ -153,12 +153,12 @@ def process_mode(mode):
 
     # Save interval accuracies to CSV
     df_interval_accuracies = pd.DataFrame(interval_accuracies)
-    df_interval_accuracies.to_csv(f'interval_accuracies_{mode}.csv', index=False)
+    df_interval_accuracies.to_csv(f'plots/interval_accuracies_{mode}.csv', index=False)
     print(f"Interval accuracies for {mode} learning saved to 'interval_accuracies_{mode}.csv'.")
 
     # Save detailed results to CSV
     df_results = pd.DataFrame(all_results)
-    df_results.to_csv(f'interval_predictions_{mode}.csv', index=False)
+    df_results.to_csv(f'plots/interval_predictions_{mode}.csv', index=False)
     print(f"Prediction details with intervals for {mode} learning saved to 'interval_predictions_{mode}.csv'.")
 
 # Run the function for zero-shot, one-shot, and three-shot learning
