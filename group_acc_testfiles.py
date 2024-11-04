@@ -13,14 +13,6 @@ answers_data = np.load('SP_test_answer.npy', allow_pickle=True)
 # Create a dictionary for fast lookup of the correct answer index by question ID
 answers_dict = {item[0]: int(item[1]) for item in answers_data}
 
-# Group questions by prefix
-groups = {}
-for item in data:
-    group_id = item['id'].split('_')[0]  # Extract the group prefix
-    if group_id not in groups:
-        groups[group_id] = []
-    groups[group_id].append(item)
-
 # Initialize sentence embedding model for similarity checks
 embedder = SentenceTransformer('paraphrase-MiniLM-L12-v2')
 
@@ -70,76 +62,58 @@ def process_mode(mode):
     all_results = []
     
     # Process each interval
-    for start in range(0, len(groups), batch_size):
+    for start in range(0, len(data), batch_size):
         interval_correct_predictions = []
         interval_results = []
         
-        # Get the groups for this interval
-        interval_groups = dict(list(groups.items())[start:start + batch_size])
+        # Get the questions and answers for this interval
+        interval_data = data[start:start + batch_size]
         
-        # Process each group in the interval
-        for group_id, items in interval_groups.items():
-            # Generate sentence embeddings for the group's questions
-            questions = [item['question'] for item in items]
-            choice_lists = [item['choice_list'] for item in items]
-            predictions = []  # Store all predicted answers in this group
+        for item in interval_data:
+            question = item['question']
+            choice_list = item['choice_list']
+            question_id = list(answers_dict.keys())[start]  # Assuming order matches
+            correct_answer_index = answers_dict[question_id]
+            actual_answer = choice_list[correct_answer_index]
 
-            # Use answers_dict to find the actual answer for each question based on ID
-            actual_answers = [choice_lists[i][answers_dict[items[i]['id']]] for i in range(len(items))]
+            # Create prompt based on learning mode
+            prompt = create_prompt(mode, question, choice_list)
 
-            # Calculate pairwise cosine similarities and process predictions
-            for i in range(len(questions)):
-                for j in range(i + 1, len(questions)):
-                    # Calculate cosine similarity
-                    embedding_i = embedder.encode(questions[i], convert_to_tensor=True)
-                    embedding_j = embedder.encode(questions[j], convert_to_tensor=True)
-                    similarity = util.cos_sim(embedding_i, embedding_j).item()
+            # Generate response
+            result = pipe(prompt, max_new_tokens=30)
+            generated_text = result[0]['generated_text'].strip()
 
-                    # If questions are semantically similar, check if predictions align
-                    if similarity > similarity_threshold:
-                        prompt = create_prompt(mode, questions[i], choice_lists[i])
-                        
-                        # Generate response
-                        result = pipe(prompt, max_new_tokens=30)
-                        generated_text = result[0]['generated_text'].strip()
+            # Calculate similarity and distance between generated text and each choice
+            generated_embedding = embedder.encode(generated_text, convert_to_tensor=True)
+            choice_embeddings = embedder.encode(choice_list, convert_to_tensor=True)
 
-                        # Calculate similarity and distance between generated text and each choice
-                        generated_embedding = embedder.encode(generated_text, convert_to_tensor=True)
-                        choice_embeddings = embedder.encode(choice_lists[i], convert_to_tensor=True)
-                        
-                        # Calculate cosine similarities and check dimensions
-                        cosine_similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy().flatten()
-                        euclidean_distances_to_choices = euclidean_distances(
-                            generated_embedding.cpu().numpy().reshape(1, -1),
-                            choice_embeddings.cpu().numpy()
-                        ).flatten()
-                        euclidean_distances_normalized = euclidean_distances_to_choices / np.max(euclidean_distances_to_choices)
-                        
-                        # Combine cosine similarity and inverse Euclidean distance with weights
-                        combined_scores = cosine_similarities - distance_weight * euclidean_distances_normalized
+            # Calculate cosine similarities and Euclidean distances
+            cosine_similarities = util.cos_sim(generated_embedding, choice_embeddings).cpu().numpy().flatten()
+            euclidean_distances_to_choices = euclidean_distances(
+                generated_embedding.cpu().numpy().reshape(1, -1),
+                choice_embeddings.cpu().numpy()
+            ).flatten()
+            euclidean_distances_normalized = euclidean_distances_to_choices / np.max(euclidean_distances_to_choices)
 
-                        # Select the answer with the highest combined score
-                        predicted_index = int(np.argmax(combined_scores))
-                        predicted_answer = choice_lists[i][predicted_index]
-                        predictions.append(predicted_answer)
+            # Combine cosine similarity and inverse Euclidean distance with weights
+            combined_scores = cosine_similarities - distance_weight * euclidean_distances_normalized
 
-                        interval_results.append({
-                            'Interval': start // batch_size + 1,
-                            'Group ID': group_id,
-                            'Question 1': questions[i],
-                            'Question 2': questions[j],
-                            'Cosine Similarity': similarity,
-                            'Euclidean Distance': euclidean_distances_normalized[predicted_index],
-                            'Combined Score': combined_scores[predicted_index],
-                            'Predicted Answer': predicted_answer,
-                            'Actual Answer': actual_answers[i]
-                        })
+            # Select the answer with the highest combined score
+            predicted_index = int(np.argmax(combined_scores))
+            predicted_answer = choice_list[predicted_index]
+            is_correct = predicted_answer == actual_answer
 
-            # Majority voting for group-based answer
-            if predictions:
-                final_prediction = Counter(predictions).most_common(1)[0][0]  # Get the most common answer
-                correct_prediction = final_prediction == actual_answers[0]  # Check with the first answer as reference
-                interval_correct_predictions.append(correct_prediction)
+            interval_results.append({
+                'Interval': start // batch_size + 1,
+                'Question': question,
+                'Cosine Similarity': cosine_similarities[predicted_index],
+                'Euclidean Distance': euclidean_distances_normalized[predicted_index],
+                'Combined Score': combined_scores[predicted_index],
+                'Predicted Answer': predicted_answer,
+                'Actual Answer': actual_answer,
+                'Correct': is_correct
+            })
+            interval_correct_predictions.append(is_correct)
 
         # Calculate accuracy for this interval
         interval_accuracy = sum(interval_correct_predictions) / len(interval_correct_predictions) if interval_correct_predictions else 0
@@ -156,8 +130,8 @@ def process_mode(mode):
 
     # Save detailed results to CSV
     df_results = pd.DataFrame(all_results)
-    df_results.to_csv(f'Test_interval_predictions_{mode}.csv', index=False)
-    print(f"Prediction details with intervals for {mode} learning saved to 'Test_interval_predictions_{mode}.csv'.")
+    df_results.to_csv(f'interval_predictions_{mode}.csv', index=False)
+    print(f"Prediction details with intervals for {mode} learning saved to 'interval_predictions_{mode}.csv'.")
 
 # Run the function for zero-shot, one-shot, and three-shot learning
 for mode in ["zero-shot", "one-shot", "three-shot"]:
