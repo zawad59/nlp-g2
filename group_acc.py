@@ -7,7 +7,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from collections import Counter
 
 # Load the data from SP_dev.npy
-data = np.load('SP_dev.npy', allow_pickle=True)
+data = np.load('WP_train.npy', allow_pickle=True)
 
 # Group questions by prefix
 groups = {}
